@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "unique_absensi" ON "absensi" USING btree ("anak_id","tanggal");

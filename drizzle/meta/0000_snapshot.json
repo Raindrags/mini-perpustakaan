@@ -1,0 +1,128 @@
+{
+  "id": "10848976-e36a-4ad2-bf79-287a24c96a84",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.absensi": {
+      "name": "absensi",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "anak_id": {
+          "name": "anak_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tanggal": {
+          "name": "tanggal",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "waktu": {
+          "name": "waktu",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "absensi_anak_id_anak_id_fk": {
+          "name": "absensi_anak_id_anak_id_fk",
+          "tableFrom": "absensi",
+          "tableTo": "anak",
+          "columnsFrom": [
+            "anak_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.anak": {
+      "name": "anak",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nama": {
+          "name": "nama",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kelas": {
+          "name": "kelas",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tingkatan": {
+          "name": "tingkatan",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kartu_id": {
+          "name": "kartu_id",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "anak_kartu_id_unique": {
+          "name": "anak_kartu_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "kartu_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
