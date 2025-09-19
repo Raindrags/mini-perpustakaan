@@ -1,159 +1,82 @@
 import { NextResponse } from "next/server";
 import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
-import { sql, avg, count } from "drizzle-orm";
+import { sql, count } from "drizzle-orm";
 
-export async function GET(request: Request) {
+interface StatistikResult {
+  rataRataKunjungan: number;
+  totalSiswa: number;
+  periode: string;
+  kelas?: string;
+  tingkatan?: string | number; // fix: sesuai tipe di schema
+}
+
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const scope = searchParams.get("scope") || "global";
-    const kelasParam = searchParams.get("kelas");
-    const tingkatanParam = searchParams.get("tingkatan");
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
+    const { searchParams } = new URL(req.url);
     const bulan = searchParams.get("bulan");
     const tahun = searchParams.get("tahun");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const groupBy = searchParams.get("groupBy"); // kelas | tingkatan | null
 
-    // Build kondisi tanggal
-    let dateCondition = sql`1 = 1`;
+    // kondisi filter tanggal
+    const conditions: any[] = [];
+    if (tahun)
+      conditions.push(sql`EXTRACT(YEAR FROM ${absensi.tanggal}) = ${tahun}`);
+    if (bulan)
+      conditions.push(sql`EXTRACT(MONTH FROM ${absensi.tanggal}) = ${bulan}`);
+    if (startDate && endDate)
+      conditions.push(
+        sql`${absensi.tanggal} BETWEEN ${startDate} AND ${endDate}`
+      );
 
-    if (bulan) {
-      const startOfMonth = `${bulan}-01`;
-      const endOfMonth = `${bulan}-31`;
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${startOfMonth} AND ${endOfMonth}`;
-    } else if (tahun) {
-      const startOfYear = `${tahun}-01-01`;
-      const endOfYear = `${tahun}-12-31`;
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${startOfYear} AND ${endOfYear}`;
-    } else if (startDate && endDate) {
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${startDate} AND ${endDate}`;
-    } else if (startDate) {
-      dateCondition = sql`${absensi.tanggal} >= ${startDate}`;
-    } else if (endDate) {
-      dateCondition = sql`${absensi.tanggal} <= ${endDate}`;
-    }
+    // subquery: hitung kunjungan per anak
+    const subquery = db
+      .select({
+        anakId: anak.id,
+        kelas: anak.kelas,
+        tingkatan: anak.tingkatan,
+        kunjungan_count: count(absensi.id).as("kunjungan_count"),
+      })
+      .from(anak)
+      .leftJoin(absensi, sql`${anak.id} = ${absensi.anakId}`)
+      .groupBy(anak.id, anak.kelas, anak.tingkatan)
+      .as("sub");
 
-    let query;
+    // query utama: hitung rata-rata dari subquery
+    const query = db
+      .select({
+        rataRataKunjungan:
+          sql<number>`ROUND(AVG(${subquery.kunjungan_count}), 2)`.as(
+            "rataRataKunjungan"
+          ),
+        totalSiswa: count(subquery.anakId).as("totalSiswa"),
+        periode: sql<string>`CASE 
+          WHEN ${bulan} IS NOT NULL THEN CONCAT('Bulan ', ${bulan})
+          WHEN ${tahun} IS NOT NULL THEN CONCAT('Tahun ', ${tahun})
+          WHEN ${startDate} IS NOT NULL AND ${endDate} IS NOT NULL 
+               THEN CONCAT(${startDate}, ' sampai ', ${endDate})
+          ELSE 'Semua Waktu'
+        END`.as("periode"),
+        ...(groupBy === "kelas"
+          ? { kelas: subquery.kelas }
+          : groupBy === "tingkatan"
+          ? { tingkatan: subquery.tingkatan }
+          : {}),
+      })
+      .from(subquery);
 
-    switch (scope) {
-      case "kelas":
-        if (!kelasParam) {
-          return NextResponse.json(
-            { message: "Parameter kelas diperlukan untuk scope kelas" },
-            { status: 400 }
-          );
-        }
-        query = db
-          .select({
-            kelas: anak.kelas,
-            rataRataKunjungan: sql`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-            periode: sql`CASE 
-              WHEN ${bulan} IS NOT NULL THEN CONCAT('Bulan ', ${bulan})
-              WHEN ${tahun} IS NOT NULL THEN CONCAT('Tahun ', ${tahun})
-              WHEN ${startDate} IS NOT NULL AND ${endDate} IS NOT NULL THEN CONCAT(${startDate}, ' sampai ', ${endDate})
-              ELSE 'Semua Waktu'
-            END`.as("periode"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                kelas: anak.kelas,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .where(sql`${anak.kelas} = ${kelasParam}`)
-              .groupBy(anak.id, anak.kelas)
-              .as("subquery")
-          )
-          .groupBy(anak.kelas);
-        break;
+    if (groupBy === "kelas") query.groupBy(subquery.kelas);
+    if (groupBy === "tingkatan") query.groupBy(subquery.tingkatan);
 
-      case "tingkatan":
-        if (!tingkatanParam) {
-          return NextResponse.json(
-            { message: "Parameter tingkatan diperlukan untuk scope tingkatan" },
-            { status: 400 }
-          );
-        }
-        query = db
-          .select({
-            tingkatan: anak.tingkatan,
-            rataRataKunjungan: sql`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-            periode: sql`CASE 
-              WHEN ${bulan} IS NOT NULL THEN CONCAT('Bulan ', ${bulan})
-              WHEN ${tahun} IS NOT NULL THEN CONCAT('Tahun ', ${tahun})
-              WHEN ${startDate} IS NOT NULL AND ${endDate} IS NOT NULL THEN CONCAT(${startDate}, ' sampai ', ${endDate})
-              ELSE 'Semua Waktu'
-            END`.as("periode"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                tingkatan: anak.tingkatan,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .where(sql`${anak.tingkatan} = ${tingkatanParam}`)
-              .groupBy(anak.id, anak.tingkatan)
-              .as("subquery")
-          )
-          .groupBy(anak.tingkatan);
-        break;
+    const result: StatistikResult[] = await query;
 
-      case "global":
-      default:
-        query = db
-          .select({
-            rataRataKunjungan: sql`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-            periode: sql`CASE 
-              WHEN ${bulan} IS NOT NULL THEN CONCAT('Bulan ', ${bulan})
-              WHEN ${tahun} IS NOT NULL THEN CONCAT('Tahun ', ${tahun})
-              WHEN ${startDate} IS NOT NULL AND ${endDate} IS NOT NULL THEN CONCAT(${startDate}, ' sampai ', ${endDate})
-              ELSE 'Semua Waktu'
-            END`.as("periode"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .groupBy(anak.id)
-              .as("subquery")
-          );
-        break;
-    }
-
-    const result = await query;
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    console.error("Error fetching rata-rata kunjungan:", error);
+    console.error("Error fetching statistik:", error);
     return NextResponse.json(
-      { message: "Gagal mengambil rata-rata kunjungan" },
+      { message: "Gagal mengambil data statistik" },
       { status: 500 }
     );
   }
