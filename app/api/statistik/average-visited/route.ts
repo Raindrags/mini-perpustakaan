@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
-import { sql, count } from "drizzle-orm";
+import { sql, count, SQL } from "drizzle-orm";
 
 interface StatistikResult {
   rataRataKunjungan: number;
   totalSiswa: number;
   periode: string;
   kelas?: string;
-  tingkatan?: string | number; // fix: sesuai tipe di schema
+  tingkatan?: string | number;
 }
 
 export async function GET(req: Request) {
@@ -20,16 +20,19 @@ export async function GET(req: Request) {
     const endDate = searchParams.get("endDate");
     const groupBy = searchParams.get("groupBy"); // kelas | tingkatan | null
 
-    // kondisi filter tanggal
-    const conditions: any[] = [];
-    if (tahun)
+    // ✅ kondisi filter tanggal tanpa any
+    const conditions: SQL[] = [];
+    if (tahun) {
       conditions.push(sql`EXTRACT(YEAR FROM ${absensi.tanggal}) = ${tahun}`);
-    if (bulan)
+    }
+    if (bulan) {
       conditions.push(sql`EXTRACT(MONTH FROM ${absensi.tanggal}) = ${bulan}`);
-    if (startDate && endDate)
+    }
+    if (startDate && endDate) {
       conditions.push(
         sql`${absensi.tanggal} BETWEEN ${startDate} AND ${endDate}`
       );
+    }
 
     // subquery: hitung kunjungan per anak
     const subquery = db
