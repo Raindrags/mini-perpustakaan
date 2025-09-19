@@ -41,12 +41,15 @@ interface GlobalStat {
 }
 
 // Fungsi helper untuk memformat angka
-const formatNumber = (value: any): string => {
+const formatNumber = (value: number | string | null | undefined): string => {
   if (typeof value === "number") {
     return value.toFixed(1);
   }
-  if (typeof value === "string" && !isNaN(parseFloat(value))) {
-    return parseFloat(value).toFixed(1);
+  if (typeof value === "string") {
+    const numericValue = parseFloat(value);
+    if (!isNaN(numericValue)) {
+      return numericValue.toFixed(1);
+    }
   }
   return "0.0";
 };
@@ -166,7 +169,7 @@ export default function StatistikPage() {
   }, [fetchStatistics]);
 
   // Fungsi untuk menentukan warna berdasarkan jumlah kunjungan
-  const getBarColor = (count: number, max: number) => {
+  const getBarColor = (count: number, max: number): string => {
     if (max === 0) return "bg-gray-300";
     const percentage = (count / max) * 100;
     if (percentage > 80) return "bg-green-500";
