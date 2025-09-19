@@ -72,7 +72,7 @@ export default function AbsensiScannerPage() {
           ref={inputRef}
           type="text"
           id="barcode"
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full text-gray-800 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           placeholder="Tempatkan kursor di sini dan scan kartu"
           onKeyPress={handleKeyPress}
           disabled={isLoading}
@@ -90,7 +90,7 @@ export default function AbsensiScannerPage() {
             type="text"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-4 py-2 text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Atau masukkan ID manual"
             disabled={isLoading}
           />

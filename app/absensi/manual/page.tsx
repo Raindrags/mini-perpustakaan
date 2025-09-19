@@ -138,7 +138,7 @@ export default function AbsensiManualPage() {
         <input
           type="text"
           placeholder="Cari nama, kelas, atau tingkatan..."
-          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+          className="w-full pl-10 text-gray-800 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
