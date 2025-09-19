@@ -451,9 +451,9 @@ export default function StatistikPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-xl p-6 shadow-md mb-8"
+              className="bg-white rounded-xl shadow-md mb-8 overflow-hidden"
             >
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 p-6 border-b border-gray-200">
                 <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
                   <FiGlobe size={20} />
                 </div>
@@ -466,56 +466,66 @@ export default function StatistikPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                      <tr className="bg-gray-50">
+                        <th className="py-4 px-6 text-left font-semibold text-gray-700 text-sm uppercase tracking-wider border-b border-gray-200">
                           Kelas
                         </th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <th className="py-4 px-6 text-left font-semibold text-gray-700 text-sm uppercase tracking-wider border-b border-gray-200">
                           Rata-rata Kunjungan
                         </th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <th className="py-4 px-6 text-left font-semibold text-gray-700 text-sm uppercase tracking-wider border-b border-gray-200">
                           Total Siswa
                         </th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-200">
                       {classStats.map((stat, index) => (
                         <motion.tr
                           key={stat.kelas || index}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           transition={{ delay: index * 0.05 }}
-                          className="border-b border-gray-100 hover:bg-gray-50"
+                          className="hover:bg-gray-50 transition-colors"
                         >
-                          <td className="py-3 px-4 font-medium">
+                          <td className="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">
+                            <span className="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-700 rounded-full mr-2 text-sm font-semibold">
+                              {stat.kelas?.charAt(0) || "K"}
+                            </span>
                             {stat.kelas || "Tidak Diketahui"}
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center">
+                              <span className="text-gray-900 font-medium mr-3 min-w-[50px]">
                                 {formatNumber(stat.rataRataKunjungan)}
                               </span>
-                              <div className="w-24 h-2 bg-gray-200 rounded-full">
-                                <div
-                                  className="h-full rounded-full bg-blue-500"
-                                  style={{
-                                    width: `${Math.min(
-                                      (stat.rataRataKunjungan || 0) * 10,
-                                      100
-                                    )}%`,
-                                  }}
-                                ></div>
+                              <div className="flex-1 max-w-[120px]">
+                                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
+                                    style={{
+                                      width: `${Math.min(
+                                        (stat.rataRataKunjungan || 0) * 20,
+                                        100
+                                      )}%`,
+                                    }}
+                                  ></div>
+                                </div>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4">{stat.totalSiswa || 0}</td>
+                          <td className="py-4 px-6">
+                            <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                              <FiUsers className="mr-1" />
+                              {stat.totalSiswa || 0}
+                            </div>
+                          </td>
                         </motion.tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-4">
+                <p className="text-gray-500 text-center py-8">
                   Tidak ada data kelas
                 </p>
               )}
