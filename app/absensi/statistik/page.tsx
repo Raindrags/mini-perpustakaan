@@ -1,17 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import {
-  FiTrendingUp,
-  FiUsers,
-  FiAward,
-  FiDownload,
-  FiCalendar,
-} from "react-icons/fi";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { useState, useEffect, useCallback } from "react";
 
-// === TYPE DEFINITIONS ===
 interface Visitor {
   id: string;
   nama: string;
@@ -37,55 +27,39 @@ interface GlobalStat {
   totalSiswa: number;
 }
 
-export default function StatistikKunjungan() {
-  const [scope, setScope] = useState<"global" | "tingkatan" | "kelas">(
-    "global"
-  );
+export default function StatistikPage() {
   const [topVisitors, setTopVisitors] = useState<Visitor[]>([]);
   const [levelStats, setLevelStats] = useState<LevelStat[]>([]);
   const [classStats, setClassStats] = useState<ClassStat[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStat | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<"month" | "year">("month");
-  const pdfRef = useRef<HTMLDivElement>(null);
 
-  // ✅ gunakan useCallback supaya tidak kena warning useEffect deps
+  const [scope, setScope] = useState<"global" | "kelas" | "tingkatan">(
+    "global"
+  );
+  const [timeRange, setTimeRange] = useState<
+    "bulan" | "tahun" | "custom" | "all"
+  >("all");
+
+  // ✅ fetchStatistics aman dari warning useEffect
   const fetchStatistics = useCallback(async () => {
     try {
-      setLoading(true);
-
-      // === FETCH TOP VISITORS ===
-      let topVisitorsUrl = `/api/statistik/kunjungan-terbanyak?scope=${scope}`;
-      if (timeRange === "month") {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        topVisitorsUrl += `&bulan=${currentMonth}`;
-      } else {
-        const currentYear = new Date().getFullYear();
-        topVisitorsUrl += `&tahun=${currentYear}`;
-      }
-
-      const topVisitorsRes = await fetch(topVisitorsUrl);
-      const topVisitorsData: Visitor[] = await topVisitorsRes.json();
-      setTopVisitors(
-        Array.isArray(topVisitorsData) ? topVisitorsData.slice(0, 5) : []
+      const res = await fetch(
+        `/api/statistik?scope=${scope}&timeRange=${timeRange}`
       );
+      if (!res.ok) throw new Error("Gagal mengambil data");
 
-      // === FETCH STATS BERDASARKAN SCOPE ===
-      switch (scope) {
-        case "global":
-          await fetchGlobalStats();
-          break;
-        case "tingkatan":
-          await fetchLevelStats();
-          break;
-        case "kelas":
-          await fetchClassStats();
-          break;
+      const data = await res.json();
+
+      if (scope === "global") {
+        setGlobalStats(data.globalStats ?? null);
+        setTopVisitors(data.topVisitors ?? []);
+      } else if (scope === "tingkatan") {
+        setLevelStats(data.levelStats ?? []);
+      } else if (scope === "kelas") {
+        setClassStats(data.classStats ?? []);
       }
     } catch (error) {
       console.error("Error fetching statistics:", error);
-    } finally {
-      setLoading(false);
     }
   }, [scope, timeRange]);
 
@@ -93,105 +67,88 @@ export default function StatistikKunjungan() {
     fetchStatistics();
   }, [fetchStatistics]);
 
-  const buildUrl = (scope: string) => {
-    let url = `/api/statistik/rata-rata-kunjungan?scope=${scope}`;
-    if (timeRange === "month") {
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      url += `&bulan=${currentMonth}`;
-    } else {
-      const currentYear = new Date().getFullYear();
-      url += `&tahun=${currentYear}`;
-    }
-    return url;
-  };
-
-  const fetchGlobalStats = async () => {
-    const res = await fetch(buildUrl("global"));
-    const data: GlobalStat[] = await res.json();
-    setGlobalStats(Array.isArray(data) && data.length > 0 ? data[0] : null);
-  };
-
-  const fetchLevelStats = async () => {
-    const res = await fetch(buildUrl("tingkatan"));
-    const data: LevelStat[] = await res.json();
-    setLevelStats(Array.isArray(data) ? data : []);
-  };
-
-  const fetchClassStats = async () => {
-    const res = await fetch(buildUrl("kelas"));
-    const data: ClassStat[] = await res.json();
-    setClassStats(Array.isArray(data) ? data : []);
-  };
-
-  const calculatePercentage = (average: number, daysInPeriod: number) => {
-    if (!average || !daysInPeriod) return "0.0";
-    return ((average / daysInPeriod) * 100).toFixed(1);
-  };
-
-  const getDaysInPeriod = () => {
-    const now = new Date();
-    if (timeRange === "month") {
-      return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    }
-    if (timeRange === "year") {
-      return 365;
-    }
-    return 30;
-  };
-
-  const downloadPDF = async () => {
-    if (!pdfRef.current) return;
-    try {
-      const canvas = await html2canvas(pdfRef.current, {
-        scale: 2,
-        useCORS: true,
-      });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      const fileName = `laporan-kunjungan-${scope}-${timeRange}-${new Date()
-        .toISOString()
-        .slice(0, 10)}.pdf`;
-      pdf.save(fileName);
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
-      </div>
-    );
-  }
-
-  const daysInPeriod = getDaysInPeriod();
-
-  // ... ⬅️ sisa return JSX-mu bisa dipertahankan sama persis, cuma tipe state sekarang aman
-  // karena `any` sudah diganti dengan tipe `Visitor`, `LevelStat`, `ClassStat`, `GlobalStat`.
-
   return (
-    <div ref={pdfRef}>
-      {/* taruh kembali JSX milikmu (sudah sesuai, tidak ada any lagi) */}
-      {/* ... */}
+    <div className="p-6">
+      <h1 className="text-xl font-bold mb-4">📊 Statistik Kunjungan</h1>
+
+      {/* Filter */}
+      <div className="flex gap-4 mb-6">
+        <select
+          value={scope}
+          onChange={(e) =>
+            setScope(e.target.value as "global" | "kelas" | "tingkatan")
+          }
+          className="border p-2 rounded"
+        >
+          <option value="global">Global</option>
+          <option value="tingkatan">Tingkatan</option>
+          <option value="kelas">Kelas</option>
+        </select>
+
+        <select
+          value={timeRange}
+          onChange={(e) =>
+            setTimeRange(e.target.value as "bulan" | "tahun" | "custom" | "all")
+          }
+          className="border p-2 rounded"
+        >
+          <option value="all">Semua Waktu</option>
+          <option value="bulan">Per Bulan</option>
+          <option value="tahun">Per Tahun</option>
+          <option value="custom">Custom Range</option>
+        </select>
+      </div>
+
+      {/* Statistik Global */}
+      {scope === "global" && globalStats && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold mb-2">🌍 Global Stats</h2>
+          <p>Rata-rata kunjungan: {globalStats.rataRataKunjungan}</p>
+          <p>Total siswa: {globalStats.totalSiswa}</p>
+
+          <h3 className="mt-4 font-semibold">👥 Top Visitors</h3>
+          <ul className="list-disc list-inside">
+            {topVisitors.map((visitor: Visitor) => (
+              <li key={visitor.id}>
+                {visitor.nama} ({visitor.kelas} - {visitor.tingkatan}) —{" "}
+                {visitor.jumlahKunjungan}x
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Statistik per Tingkatan */}
+      {scope === "tingkatan" && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold mb-2">
+            📚 Statistik per Tingkatan
+          </h2>
+          <ul className="list-disc list-inside">
+            {levelStats.map((stat: LevelStat) => (
+              <li key={stat.tingkatan}>
+                {stat.tingkatan} — rata-rata {stat.rataRataKunjungan} kunjungan,{" "}
+                total {stat.totalSiswa} siswa
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Statistik per Kelas */}
+      {scope === "kelas" && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold mb-2">🏫 Statistik per Kelas</h2>
+          <ul className="list-disc list-inside">
+            {classStats.map((stat: ClassStat) => (
+              <li key={stat.kelas}>
+                {stat.kelas} — rata-rata {stat.rataRataKunjungan} kunjungan,
+                total {stat.totalSiswa} siswa
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
