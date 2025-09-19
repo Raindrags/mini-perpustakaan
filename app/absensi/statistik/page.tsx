@@ -10,6 +10,7 @@ import {
   FiGlobe,
   FiBook,
   FiFilter,
+  FiLoader,
 } from "react-icons/fi";
 import { motion } from "framer-motion";
 
@@ -51,6 +52,7 @@ export default function StatistikPage() {
   const [classStats, setClassStats] = useState<ClassStat[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStat | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [scope, setScope] = useState<"global" | "kelas" | "tingkatan">(
     "global"
@@ -62,27 +64,72 @@ export default function StatistikPage() {
   const fetchStatistics = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true);
-      const res = await fetch(
-        `/api/statistik?scope=${scope}&timeRange=${timeRange}`
-      );
-      if (!res.ok) throw new Error("Gagal mengambil data");
+      setError(null);
 
-      const data: ApiResponse = await res.json();
+      // Build query parameters based on scope and timeRange
+      const params = new URLSearchParams();
+      params.append("scope", scope);
 
-      if (scope === "global") {
-        setGlobalStats(data.globalStats ?? null);
-        setTopVisitors(data.topVisitors ?? []);
+      if (timeRange === "bulan") {
+        const currentMonth = new Date().getMonth() + 1;
+        params.append("bulan", currentMonth.toString());
+      } else if (timeRange === "tahun") {
+        const currentYear = new Date().getFullYear();
+        params.append("tahun", currentYear.toString());
+      }
+
+      // Set groupBy parameter based on scope
+      if (scope === "kelas") {
+        params.append("groupBy", "kelas");
       } else if (scope === "tingkatan") {
-        setLevelStats(data.levelStats ?? []);
+        params.append("groupBy", "tingkatan");
+      }
+
+      const res = await fetch(`/api/statistik?${params.toString()}`);
+
+      if (!res.ok) {
+        throw new Error(
+          `Gagal mengambil data: ${res.status} ${res.statusText}`
+        );
+      }
+
+      const data = await res.json();
+
+      // Process data based on scope
+      if (scope === "global") {
+        setGlobalStats(
+          data.globalStats || {
+            rataRataKunjungan: data.rataRataKunjungan || 0,
+            totalSiswa: data.totalSiswa || 0,
+          }
+        );
+
+        // Fetch top visitors separately if not included in response
+        if (!data.topVisitors) {
+          try {
+            const topRes = await fetch("/api/statistik/most-recent-visited");
+            if (topRes.ok) {
+              const topData = await topRes.json();
+              setTopVisitors(topData.data || []);
+            }
+          } catch (err) {
+            console.error("Error fetching top visitors:", err);
+          }
+        } else {
+          setTopVisitors(data.topVisitors);
+        }
+      } else if (scope === "tingkatan") {
+        setLevelStats(data.levelStats || data);
       } else if (scope === "kelas") {
-        setClassStats(data.classStats ?? []);
+        setClassStats(data.classStats || data);
       }
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error("Error fetching statistics:", error.message);
-      } else {
-        console.error("Unknown error:", error);
-      }
+      console.error("Error fetching statistics:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan tidak diketahui"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -144,7 +191,7 @@ export default function StatistikPage() {
               onChange={(e) =>
                 setScope(e.target.value as "global" | "kelas" | "tingkatan")
               }
-              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white"
             >
               <option value="global">Statistik Global</option>
               <option value="tingkatan">Berdasarkan Tingkatan</option>
@@ -163,7 +210,7 @@ export default function StatistikPage() {
                   e.target.value as "bulan" | "tahun" | "custom" | "all"
                 )
               }
-              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white"
             >
               <option value="all">Semua Waktu</option>
               <option value="bulan">Bulan Ini</option>
@@ -174,9 +221,22 @@ export default function StatistikPage() {
         </div>
       </motion.div>
 
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <p>{error}</p>
+          <button
+            onClick={fetchStatistics}
+            className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="flex flex-col justify-center items-center h-64 bg-white rounded-xl shadow-md">
+          <FiLoader className="animate-spin text-blue-500 text-4xl mb-4" />
+          <p className="text-gray-600">Memuat data statistik...</p>
         </div>
       ) : (
         <>
@@ -309,19 +369,19 @@ export default function StatistikPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {levelStats.map((stat, index) => (
                     <motion.div
-                      key={stat.tingkatan}
+                      key={stat.tingkatan || index}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: index * 0.1 }}
                       className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition"
                     >
                       <h3 className="font-semibold text-gray-800 mb-2">
-                        {stat.tingkatan}
+                        {stat.tingkatan || "Tidak Diketahui"}
                       </h3>
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm text-gray-500">Rata-rata</span>
                         <span className="font-bold text-blue-600">
-                          {stat.rataRataKunjungan.toFixed(1)}
+                          {stat.rataRataKunjungan?.toFixed(1) || 0}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -329,7 +389,7 @@ export default function StatistikPage() {
                           Total Siswa
                         </span>
                         <span className="font-bold text-green-600">
-                          {stat.totalSiswa}
+                          {stat.totalSiswa || 0}
                         </span>
                       </div>
                     </motion.div>
@@ -379,24 +439,26 @@ export default function StatistikPage() {
                     <tbody>
                       {classStats.map((stat, index) => (
                         <motion.tr
-                          key={stat.kelas}
+                          key={stat.kelas || index}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           transition={{ delay: index * 0.05 }}
                           className="border-b border-gray-100 hover:bg-gray-50"
                         >
                           <td className="py-3 px-4 font-medium">
-                            {stat.kelas}
+                            {stat.kelas || "Tidak Diketahui"}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <span>{stat.rataRataKunjungan.toFixed(1)}</span>
+                              <span>
+                                {stat.rataRataKunjungan?.toFixed(1) || 0}
+                              </span>
                               <div className="w-24 h-2 bg-gray-200 rounded-full">
                                 <div
                                   className="h-full rounded-full bg-blue-500"
                                   style={{
                                     width: `${Math.min(
-                                      stat.rataRataKunjungan * 10,
+                                      (stat.rataRataKunjungan || 0) * 10,
                                       100
                                     )}%`,
                                   }}
@@ -404,7 +466,7 @@ export default function StatistikPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4">{stat.totalSiswa}</td>
+                          <td className="py-3 px-4">{stat.totalSiswa || 0}</td>
                         </motion.tr>
                       ))}
                     </tbody>
