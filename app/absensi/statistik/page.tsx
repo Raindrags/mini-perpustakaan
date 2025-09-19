@@ -6,7 +6,6 @@ import {
   FiUsers,
   FiAward,
   FiBarChart2,
-  FiCalendar,
   FiGlobe,
   FiBook,
   FiFilter,
@@ -40,7 +39,7 @@ interface GlobalStat {
   totalSiswa: number;
 }
 
-// Fungsi helper untuk memformat angka
+// Fungsi helper untuk memformat angka dengan tipe yang tepat
 const formatNumber = (value: number | string | null | undefined): string => {
   if (typeof value === "number") {
     return value.toFixed(1);
