@@ -1,8 +1,19 @@
-export default function NotFound() {
+"use client";
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <h1 className="text-3xl font-bold">404</h1>
-      <p className="mt-2">Halaman yang kamu cari tidak ditemukan 🚧</p>
-    </div>
+    <html>
+      <body>
+        <h2>⚠️ Something went wrong!</h2>
+        <p>{error.message}</p>
+        <button onClick={() => reset()}>Try again</button>
+      </body>
+    </html>
   );
 }
