@@ -57,7 +57,7 @@ export async function GET(req: Request) {
         .select({
           kelas: subquery.kelas,
           rataRataKunjungan:
-            sql<number>`ROUND(AVG(${subquery.kunjungan_count}), 2)`.as(
+            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
               "rataRataKunjungan"
             ),
           totalSiswa: count(subquery.anakId).as("totalSiswa"),
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
         .select({
           tingkatan: subquery.tingkatan,
           rataRataKunjungan:
-            sql<number>`ROUND(AVG(${subquery.kunjungan_count}), 2)`.as(
+            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
               "rataRataKunjungan"
             ),
           totalSiswa: count(subquery.anakId).as("totalSiswa"),
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
       query = db
         .select({
           rataRataKunjungan:
-            sql<number>`ROUND(AVG(${subquery.kunjungan_count}), 2)`.as(
+            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
               "rataRataKunjungan"
             ),
           totalSiswa: count(subquery.anakId).as("totalSiswa"),

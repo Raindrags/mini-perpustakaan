@@ -1,3 +1,4 @@
+// app/api/statistik/top-visitors/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
@@ -5,19 +6,20 @@ import { sql, count, desc } from "drizzle-orm";
 
 export async function GET() {
   try {
-    // Query untuk mendapatkan pengunjung teraktif
     const topVisitors = await db
       .select({
         id: anak.id,
         nama: anak.nama,
         kelas: anak.kelas,
         tingkatan: anak.tingkatan,
-        jumlahKunjungan: count(absensi.id).as("jumlahKunjungan"),
+        jumlahKunjungan: sql<number>`COALESCE(${count(absensi.id)}, 0)`.as(
+          "jumlahKunjungan"
+        ),
       })
       .from(anak)
       .leftJoin(absensi, sql`${anak.id} = ${absensi.anakId}`)
-      .groupBy(anak.id, anak.kelas, anak.tingkatan)
-      .orderBy(desc(count(absensi.id)))
+      .groupBy(anak.id, anak.nama, anak.kelas, anak.tingkatan)
+      .orderBy(desc(sql`COALESCE(${count(absensi.id)}, 0)`))
       .limit(10);
 
     return NextResponse.json({ data: topVisitors }, { status: 200 });

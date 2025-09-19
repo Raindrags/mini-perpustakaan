@@ -40,12 +40,16 @@ interface GlobalStat {
   totalSiswa: number;
 }
 
-interface ApiResponse {
-  globalStats?: GlobalStat;
-  topVisitors?: Visitor[];
-  levelStats?: LevelStat[];
-  classStats?: ClassStat[];
-}
+// Fungsi helper untuk memformat angka
+const formatNumber = (value: any): string => {
+  if (typeof value === "number") {
+    return value.toFixed(1);
+  }
+  if (typeof value === "string" && !isNaN(parseFloat(value))) {
+    return parseFloat(value).toFixed(1);
+  }
+  return "0.0";
+};
 
 export default function StatistikPage() {
   const [topVisitors, setTopVisitors] = useState<Visitor[]>([]);
@@ -310,7 +314,7 @@ export default function StatistikPage() {
                     </h3>
                   </div>
                   <p className="text-3xl font-bold text-green-600">
-                    {globalStats.rataRataKunjungan.toFixed(1)}
+                    {formatNumber(globalStats.rataRataKunjungan)}
                   </p>
                   <p className="text-sm text-gray-500 mt-1">
                     Kunjungan per siswa
@@ -417,7 +421,7 @@ export default function StatistikPage() {
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm text-gray-500">Rata-rata</span>
                         <span className="font-bold text-blue-600">
-                          {stat.rataRataKunjungan?.toFixed(1) || 0}
+                          {formatNumber(stat.rataRataKunjungan)}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -487,7 +491,7 @@ export default function StatistikPage() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <span>
-                                {stat.rataRataKunjungan?.toFixed(1) || 0}
+                                {formatNumber(stat.rataRataKunjungan)}
                               </span>
                               <div className="w-24 h-2 bg-gray-200 rounded-full">
                                 <div
