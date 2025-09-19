@@ -12,45 +12,53 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
 export default function StatistikKunjungan() {
-  const [scope, setScope] = useState("global");
+  const [scope, setScope] = useState<"global" | "tingkatan" | "kelas">(
+    "global"
+  );
   const [topVisitors, setTopVisitors] = useState<any[]>([]);
-  const [averageStats, setAverageStats] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState("month");
-  const [classStats, setClassStats] = useState<any[]>([]);
   const [levelStats, setLevelStats] = useState<any[]>([]);
+  const [classStats, setClassStats] = useState<any[]>([]);
   const [globalStats, setGlobalStats] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState<"month" | "year">("month");
   const pdfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchStatistics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, timeRange]);
 
   const fetchStatistics = async () => {
     try {
       setLoading(true);
 
-      // Fetch top visitors
+      // === FETCH TOP VISITORS ===
       let topVisitorsUrl = `/api/statistik/kunjungan-terbanyak?scope=${scope}`;
       if (timeRange === "month") {
         const currentMonth = new Date().toISOString().slice(0, 7);
         topVisitorsUrl += `&bulan=${currentMonth}`;
-      } else if (timeRange === "year") {
+      } else {
         const currentYear = new Date().getFullYear();
         topVisitorsUrl += `&tahun=${currentYear}`;
       }
 
       const topVisitorsRes = await fetch(topVisitorsUrl);
       const topVisitorsData = await topVisitorsRes.json();
-      setTopVisitors(topVisitorsData.slice(0, 5));
+      setTopVisitors(
+        Array.isArray(topVisitorsData) ? topVisitorsData.slice(0, 5) : []
+      );
 
-      // Fetch average stats based on scope
-      if (scope === "global") {
-        await fetchGlobalStats();
-      } else if (scope === "tingkatan") {
-        await fetchLevelStats();
-      } else if (scope === "kelas") {
-        await fetchClassStats();
+      // === FETCH STATS BERDASARKAN SCOPE ===
+      switch (scope) {
+        case "global":
+          await fetchGlobalStats();
+          break;
+        case "tingkatan":
+          await fetchLevelStats();
+          break;
+        case "kelas":
+          await fetchClassStats();
+          break;
       }
     } catch (error) {
       console.error("Error fetching statistics:", error);
@@ -59,78 +67,62 @@ export default function StatistikKunjungan() {
     }
   };
 
-  const fetchGlobalStats = async () => {
-    let url = `/api/statistik/rata-rata-kunjungan?scope=global`;
+  const buildUrl = (scope: string) => {
+    let url = `/api/statistik/rata-rata-kunjungan?scope=${scope}`;
     if (timeRange === "month") {
       const currentMonth = new Date().toISOString().slice(0, 7);
       url += `&bulan=${currentMonth}`;
-    } else if (timeRange === "year") {
+    } else {
       const currentYear = new Date().getFullYear();
       url += `&tahun=${currentYear}`;
     }
+    return url;
+  };
 
-    const res = await fetch(url);
+  const fetchGlobalStats = async () => {
+    const res = await fetch(buildUrl("global"));
     const data = await res.json();
-    setGlobalStats(data[0] || {});
+    setGlobalStats(Array.isArray(data) && data.length > 0 ? data[0] : {});
   };
 
   const fetchLevelStats = async () => {
-    let url = `/api/statistik/rata-rata-kunjungan?scope=tingkatan`;
-    if (timeRange === "month") {
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      url += `&bulan=${currentMonth}`;
-    } else if (timeRange === "year") {
-      const currentYear = new Date().getFullYear();
-      url += `&tahun=${currentYear}`;
-    }
-
-    const res = await fetch(url);
+    const res = await fetch(buildUrl("tingkatan"));
     const data = await res.json();
-    setLevelStats(data);
+    setLevelStats(Array.isArray(data) ? data : []);
   };
 
   const fetchClassStats = async () => {
-    let url = `/api/statistik/rata-rata-kunjungan?scope=kelas`;
-    if (timeRange === "month") {
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      url += `&bulan=${currentMonth}`;
-    } else if (timeRange === "year") {
-      const currentYear = new Date().getFullYear();
-      url += `&tahun=${currentYear}`;
-    }
-
-    const res = await fetch(url);
+    const res = await fetch(buildUrl("kelas"));
     const data = await res.json();
-    setClassStats(data);
+    setClassStats(Array.isArray(data) ? data : []);
   };
 
-  // Calculate percentage for attendance
   const calculatePercentage = (average: number, daysInPeriod: number) => {
+    if (!average || !daysInPeriod) return "0.0";
     return ((average / daysInPeriod) * 100).toFixed(1);
   };
 
-  // Get days in current period
   const getDaysInPeriod = () => {
     const now = new Date();
     if (timeRange === "month") {
       return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    } else if (timeRange === "year") {
-      return new Date(now.getFullYear(), 2, 0).getDate(); // Approximate with average month days
     }
-    return 30; // Default
+    if (timeRange === "year") {
+      return 365; // setahun penuh
+    }
+    return 30;
   };
 
   const downloadPDF = async () => {
     if (!pdfRef.current) return;
-
     try {
       const canvas = await html2canvas(pdfRef.current, {
         scale: 2,
         useCORS: true,
       });
-
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
+
       const imgWidth = 210;
       const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -141,7 +133,7 @@ export default function StatistikKunjungan() {
       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
-      while (heightLeft >= 0) {
+      while (heightLeft > 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
         pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
@@ -169,16 +161,17 @@ export default function StatistikKunjungan() {
 
   return (
     <div className="space-y-8">
-      {/* Filters and Download Button */}
+      {/* Filter & Download */}
       <div className="flex flex-wrap gap-4 justify-between items-center">
         <div className="flex flex-wrap gap-4">
+          {/* Scope */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Scope
             </label>
             <select
               value={scope}
-              onChange={(e) => setScope(e.target.value)}
+              onChange={(e) => setScope(e.target.value as any)}
               className="rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               <option value="global">Global</option>
@@ -187,13 +180,14 @@ export default function StatistikKunjungan() {
             </select>
           </div>
 
+          {/* Periode */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Periode
             </label>
             <select
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
+              onChange={(e) => setTimeRange(e.target.value as any)}
               className="rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               <option value="month">Bulan Ini</option>
@@ -211,9 +205,9 @@ export default function StatistikKunjungan() {
         </button>
       </div>
 
-      {/* Content for PDF */}
+      {/* Konten PDF */}
       <div ref={pdfRef} className="bg-white p-6 rounded-xl shadow-md">
-        {/* PDF Header */}
+        {/* Header PDF */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-800">
             Laporan Statistik Kunjungan
@@ -236,8 +230,9 @@ export default function StatistikKunjungan() {
           </p>
         </div>
 
-        {/* Stats Overview */}
+        {/* --- Statistik Umum --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Rata-rata Kehadiran */}
           <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
             <div className="flex items-center">
               <div className="bg-amber-100 p-2 rounded-full mr-3">
@@ -257,6 +252,7 @@ export default function StatistikKunjungan() {
             </div>
           </div>
 
+          {/* Total Siswa */}
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
             <div className="flex items-center">
               <div className="bg-blue-100 p-2 rounded-full mr-3">
@@ -273,6 +269,7 @@ export default function StatistikKunjungan() {
             </div>
           </div>
 
+          {/* Hari dalam periode */}
           <div className="bg-green-50 rounded-xl p-4 border border-green-200">
             <div className="flex items-center">
               <div className="bg-green-100 p-2 rounded-full mr-3">
@@ -288,8 +285,8 @@ export default function StatistikKunjungan() {
           </div>
         </div>
 
-        {/* Detailed Statistics */}
-        {scope === "global" && (
+        {/* Statistik Detail */}
+        {scope === "global" && globalStats && (
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
               Statistik Global
@@ -326,18 +323,10 @@ export default function StatistikKunjungan() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Tingkatan
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Jumlah Siswa
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Rata-rata Kehadiran
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Persentase
-                    </th>
+                    <th className="py-3 px-4 text-left">Tingkatan</th>
+                    <th className="py-3 px-4 text-left">Jumlah Siswa</th>
+                    <th className="py-3 px-4 text-left">Rata-rata Kehadiran</th>
+                    <th className="py-3 px-4 text-left">Persentase</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -374,18 +363,10 @@ export default function StatistikKunjungan() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Kelas
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Jumlah Siswa
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Rata-rata Kehadiran
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Persentase
-                    </th>
+                    <th className="py-3 px-4 text-left">Kelas</th>
+                    <th className="py-3 px-4 text-left">Jumlah Siswa</th>
+                    <th className="py-3 px-4 text-left">Rata-rata Kehadiran</th>
+                    <th className="py-3 px-4 text-left">Persentase</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -424,26 +405,16 @@ export default function StatistikKunjungan() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Peringkat
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Nama Siswa
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Kelas
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Jumlah Kunjungan
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                      Persentase
-                    </th>
+                    <th className="py-3 px-4 text-left">Peringkat</th>
+                    <th className="py-3 px-4 text-left">Nama Siswa</th>
+                    <th className="py-3 px-4 text-left">Kelas</th>
+                    <th className="py-3 px-4 text-left">Jumlah Kunjungan</th>
+                    <th className="py-3 px-4 text-left">Persentase</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {topVisitors.map((student, index) => (
-                    <tr key={student.id}>
+                    <tr key={student.id || index}>
                       <td className="py-3 px-4">
                         <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
                           <span className="text-amber-700 font-medium">
@@ -479,7 +450,7 @@ export default function StatistikKunjungan() {
           )}
         </div>
 
-        {/* Footer for PDF */}
+        {/* Footer PDF */}
         <div className="mt-8 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
           <p>
             Sistem Absensi Sekolah - Dicetak pada{" "}
@@ -488,7 +459,7 @@ export default function StatistikKunjungan() {
         </div>
       </div>
 
-      {/* View More Link */}
+      {/* Reload */}
       <div className="text-center">
         <button
           onClick={fetchStatistics}

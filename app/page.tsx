@@ -1,10 +1,9 @@
 "use client";
 
-import { FiBookOpen, FiBarChart2, FiUserCheck, FiSquare } from "react-icons/fi";
+import { FiBookOpen, FiUserCheck, FiSquare } from "react-icons/fi";
 import Link from "next/link";
 
-import { useEffect, useState } from "react";
-import { FiTrendingUp, FiUsers, FiAward } from "react-icons/fi";
+import { useState } from "react";
 
 function TataCaraAbsensi() {
   return (
