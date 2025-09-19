@@ -27,6 +27,13 @@ interface GlobalStat {
   totalSiswa: number;
 }
 
+interface ApiResponse {
+  globalStats?: GlobalStat;
+  topVisitors?: Visitor[];
+  levelStats?: LevelStat[];
+  classStats?: ClassStat[];
+}
+
 export default function StatistikPage() {
   const [topVisitors, setTopVisitors] = useState<Visitor[]>([]);
   const [levelStats, setLevelStats] = useState<LevelStat[]>([]);
@@ -40,7 +47,7 @@ export default function StatistikPage() {
     "bulan" | "tahun" | "custom" | "all"
   >("all");
 
-  // ✅ fetchStatistics aman dari warning useEffect
+  // ✅ fetchStatistics aman dari warning useEffect & bebas any
   const fetchStatistics = useCallback(async () => {
     try {
       const res = await fetch(
@@ -48,7 +55,7 @@ export default function StatistikPage() {
       );
       if (!res.ok) throw new Error("Gagal mengambil data");
 
-      const data = await res.json();
+      const data: ApiResponse = await res.json();
 
       if (scope === "global") {
         setGlobalStats(data.globalStats ?? null);
@@ -58,8 +65,12 @@ export default function StatistikPage() {
       } else if (scope === "kelas") {
         setClassStats(data.classStats ?? []);
       }
-    } catch (error) {
-      console.error("Error fetching statistics:", error);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error fetching statistics:", error.message);
+      } else {
+        console.error("Unknown error:", error);
+      }
     }
   }, [scope, timeRange]);
 
@@ -108,7 +119,7 @@ export default function StatistikPage() {
 
           <h3 className="mt-4 font-semibold">👥 Top Visitors</h3>
           <ul className="list-disc list-inside">
-            {topVisitors.map((visitor: Visitor) => (
+            {topVisitors.map((visitor) => (
               <li key={visitor.id}>
                 {visitor.nama} ({visitor.kelas} - {visitor.tingkatan}) —{" "}
                 {visitor.jumlahKunjungan}x
@@ -125,7 +136,7 @@ export default function StatistikPage() {
             📚 Statistik per Tingkatan
           </h2>
           <ul className="list-disc list-inside">
-            {levelStats.map((stat: LevelStat) => (
+            {levelStats.map((stat) => (
               <li key={stat.tingkatan}>
                 {stat.tingkatan} — rata-rata {stat.rataRataKunjungan} kunjungan,{" "}
                 total {stat.totalSiswa} siswa
@@ -140,7 +151,7 @@ export default function StatistikPage() {
         <div className="mb-6">
           <h2 className="text-lg font-semibold mb-2">🏫 Statistik per Kelas</h2>
           <ul className="list-disc list-inside">
-            {classStats.map((stat: ClassStat) => (
+            {classStats.map((stat) => (
               <li key={stat.kelas}>
                 {stat.kelas} — rata-rata {stat.rataRataKunjungan} kunjungan,
                 total {stat.totalSiswa} siswa
