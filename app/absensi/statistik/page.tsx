@@ -11,6 +11,7 @@ import {
   FiBook,
   FiFilter,
   FiLoader,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { motion } from "framer-motion";
 
@@ -68,15 +69,6 @@ export default function StatistikPage() {
 
       // Build query parameters based on scope and timeRange
       const params = new URLSearchParams();
-      params.append("scope", scope);
-
-      if (timeRange === "bulan") {
-        const currentMonth = new Date().getMonth() + 1;
-        params.append("bulan", currentMonth.toString());
-      } else if (timeRange === "tahun") {
-        const currentYear = new Date().getFullYear();
-        params.append("tahun", currentYear.toString());
-      }
 
       // Set groupBy parameter based on scope
       if (scope === "kelas") {
@@ -85,7 +77,29 @@ export default function StatistikPage() {
         params.append("groupBy", "tingkatan");
       }
 
-      const res = await fetch(`/api/statistik?${params.toString()}`);
+      // Add time range parameters
+      if (timeRange === "bulan") {
+        const currentMonth = new Date().getMonth() + 1;
+        params.append("bulan", currentMonth.toString());
+        const currentYear = new Date().getFullYear();
+        params.append("tahun", currentYear.toString());
+      } else if (timeRange === "tahun") {
+        const currentYear = new Date().getFullYear();
+        params.append("tahun", currentYear.toString());
+      } else if (timeRange === "custom") {
+        // For custom range, you might need to add date inputs in your UI
+        const startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 1);
+        params.append("startDate", startDate.toISOString().split("T")[0]);
+        params.append("endDate", new Date().toISOString().split("T")[0]);
+      }
+
+      let apiUrl = "/api/statistik";
+      if (params.toString()) {
+        apiUrl += `?${params.toString()}`;
+      }
+
+      const res = await fetch(apiUrl);
 
       if (!res.ok) {
         throw new Error(
@@ -97,31 +111,39 @@ export default function StatistikPage() {
 
       // Process data based on scope
       if (scope === "global") {
-        setGlobalStats(
-          data.globalStats || {
-            rataRataKunjungan: data.rataRataKunjungan || 0,
-            totalSiswa: data.totalSiswa || 0,
-          }
-        );
-
-        // Fetch top visitors separately if not included in response
-        if (!data.topVisitors) {
-          try {
-            const topRes = await fetch("/api/statistik/most-recent-visited");
-            if (topRes.ok) {
-              const topData = await topRes.json();
-              setTopVisitors(topData.data || []);
-            }
-          } catch (err) {
-            console.error("Error fetching top visitors:", err);
-          }
+        // If the API returns an array, take the first item
+        if (Array.isArray(data) && data.length > 0) {
+          setGlobalStats({
+            rataRataKunjungan: data[0].rataRataKunjungan || 0,
+            totalSiswa: data[0].totalSiswa || 0,
+          });
+        } else if (data.rataRataKunjungan !== undefined) {
+          setGlobalStats({
+            rataRataKunjungan: data.rataRataKunjungan,
+            totalSiswa: data.totalSiswa,
+          });
         } else {
-          setTopVisitors(data.topVisitors);
+          setGlobalStats({
+            rataRataKunjungan: 0,
+            totalSiswa: 0,
+          });
+        }
+
+        // Fetch top visitors from a different endpoint
+        try {
+          const topRes = await fetch("/api/statistik/top-visitors");
+          if (topRes.ok) {
+            const topData = await topRes.json();
+            setTopVisitors(topData.data || topData || []);
+          }
+        } catch (err) {
+          console.error("Error fetching top visitors:", err);
+          setTopVisitors([]);
         }
       } else if (scope === "tingkatan") {
-        setLevelStats(data.levelStats || data);
+        setLevelStats(Array.isArray(data) ? data : []);
       } else if (scope === "kelas") {
-        setClassStats(data.classStats || data);
+        setClassStats(Array.isArray(data) ? data : []);
       }
     } catch (error: unknown) {
       console.error("Error fetching statistics:", error);
@@ -141,6 +163,7 @@ export default function StatistikPage() {
 
   // Fungsi untuk menentukan warna berdasarkan jumlah kunjungan
   const getBarColor = (count: number, max: number) => {
+    if (max === 0) return "bg-gray-300";
     const percentage = (count / max) * 100;
     if (percentage > 80) return "bg-green-500";
     if (percentage > 50) return "bg-blue-500";
@@ -151,7 +174,7 @@ export default function StatistikPage() {
   // Hitung maksimum kunjungan untuk skala grafik
   const maxKunjungan =
     topVisitors.length > 0
-      ? Math.max(...topVisitors.map((v) => v.jumlahKunjungan))
+      ? Math.max(...topVisitors.map((v) => v.jumlahKunjungan || 0))
       : 1;
 
   return (
@@ -191,7 +214,7 @@ export default function StatistikPage() {
               onChange={(e) =>
                 setScope(e.target.value as "global" | "kelas" | "tingkatan")
               }
-              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white"
+              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
             >
               <option value="global">Statistik Global</option>
               <option value="tingkatan">Berdasarkan Tingkatan</option>
@@ -210,7 +233,7 @@ export default function StatistikPage() {
                   e.target.value as "bulan" | "tahun" | "custom" | "all"
                 )
               }
-              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white"
+              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
             >
               <option value="all">Semua Waktu</option>
               <option value="bulan">Bulan Ini</option>
@@ -222,15 +245,26 @@ export default function StatistikPage() {
       </motion.div>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-          <p>{error}</p>
-          <button
-            onClick={fetchStatistics}
-            className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          >
-            Coba Lagi
-          </button>
-        </div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6"
+        >
+          <div className="flex justify-between items-center">
+            <p className="font-medium">{error}</p>
+            <button
+              onClick={fetchStatistics}
+              className="ml-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 flex items-center"
+            >
+              <FiRefreshCw className="mr-2" />
+              Coba Lagi
+            </button>
+          </div>
+          <p className="mt-2 text-sm">
+            Pastikan server API sedang berjalan dan endpoint /api/statistik
+            tersedia.
+          </p>
+        </motion.div>
       )}
 
       {isLoading ? (
@@ -298,7 +332,7 @@ export default function StatistikPage() {
                   <div className="space-y-4">
                     {topVisitors.map((visitor, index) => (
                       <motion.div
-                        key={visitor.id}
+                        key={visitor.id || index}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.1 }}
@@ -310,7 +344,7 @@ export default function StatistikPage() {
                           </div>
                           <div>
                             <p className="font-medium text-gray-800">
-                              {visitor.nama}
+                              {visitor.nama || "Nama tidak tersedia"}
                             </p>
                             <p className="text-sm text-gray-500">
                               {visitor.kelas} - {visitor.tingkatan}
@@ -320,17 +354,19 @@ export default function StatistikPage() {
 
                         <div className="text-right">
                           <p className="font-bold text-blue-600">
-                            {visitor.jumlahKunjungan} kunjungan
+                            {visitor.jumlahKunjungan || 0} kunjungan
                           </p>
                           <div className="w-32 h-2 bg-gray-200 rounded-full mt-1">
                             <div
                               className={`h-full rounded-full ${getBarColor(
-                                visitor.jumlahKunjungan,
+                                visitor.jumlahKunjungan || 0,
                                 maxKunjungan
                               )}`}
                               style={{
                                 width: `${
-                                  (visitor.jumlahKunjungan / maxKunjungan) * 100
+                                  ((visitor.jumlahKunjungan || 0) /
+                                    maxKunjungan) *
+                                  100
                                 }%`,
                               }}
                             ></div>
