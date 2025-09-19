@@ -47,7 +47,6 @@ export default function StatistikPage() {
     "bulan" | "tahun" | "custom" | "all"
   >("all");
 
-  // ✅ Bebas any
   const fetchStatistics = useCallback(async (): Promise<void> => {
     try {
       const res = await fetch(
