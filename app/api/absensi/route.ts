@@ -1,142 +1,75 @@
-// app/api/statistik/rata-rata-kunjungan/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/DB";
-import { anak, absensi } from "@/DB/schema";
-import { sql, count } from "drizzle-orm";
+import { absensi } from "@/DB/schema";
+import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 
-/**
- * Response type untuk API rata-rata kunjungan
- */
-type RataRataResponse =
-  | {
-      kelas: string;
-      rataRataKunjungan: number;
-      totalSiswa: number;
-    }[]
-  | {
-      tingkatan: string;
-      rataRataKunjungan: number;
-      totalSiswa: number;
-    }[]
-  | {
-      rataRataKunjungan: number;
-      totalSiswa: number;
-    }[];
+// Schema untuk array input
+const absensiCreateSchema = z.array(
+  z.object({
+    id: z.number().int().positive(), // karena kamu kirim { id: number }
+  })
+);
 
-export async function GET(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const scope = searchParams.get("scope") ?? "global";
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
-    const bulan = searchParams.get("bulan");
-    const tahun = searchParams.get("tahun");
+    const body = await req.json();
+    const data = absensiCreateSchema.parse(body);
 
-    // 🔹 Kondisi tanggal
-    let dateCondition = sql`1 = 1`;
+    // Waktu Indonesia (format DB friendly)
+    const now = new Date();
+    const today = now.toISOString().split("T")[0]; // YYYY-MM-DD
+    const time = now.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
-    if (bulan) {
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${bulan}-01 AND ${bulan}-31`;
-    } else if (tahun) {
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${tahun}-01-01 AND ${tahun}-12-31`;
-    } else if (startDate && endDate) {
-      dateCondition = sql`${absensi.tanggal} BETWEEN ${startDate} AND ${endDate}`;
-    } else if (startDate) {
-      dateCondition = sql`${absensi.tanggal} >= ${startDate}`;
-    } else if (endDate) {
-      dateCondition = sql`${absensi.tanggal} <= ${endDate}`;
+    // Transaction biar atomic
+    const inserted = await db.transaction(async (tx) => {
+      const results = [];
+      for (const a of data) {
+        // Cek existing absensi
+        const existing = await tx
+          .select()
+          .from(absensi)
+          .where(and(eq(absensi.anakId, a.id), eq(absensi.tanggal, today)));
+
+        if (existing.length > 0) continue;
+
+        // Insert absensi baru
+        const [newAbsensi] = await tx
+          .insert(absensi)
+          .values({
+            anakId: a.id,
+            tanggal: today,
+            waktu: time,
+          })
+          .returning();
+
+        results.push(newAbsensi);
+      }
+      return results;
+    });
+
+    if (inserted.length === 0) {
+      return NextResponse.json(
+        { message: "Tidak ada absensi baru" },
+        { status: 409 }
+      );
     }
 
-    // 🔹 Query builder
-    let query: Promise<RataRataResponse>;
-
-    switch (scope) {
-      case "kelas":
-        query = db
-          .select({
-            kelas: anak.kelas,
-            rataRataKunjungan: sql<number>`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                kelas: anak.kelas,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .groupBy(anak.id, anak.kelas)
-              .as("subquery")
-          )
-          .groupBy(anak.kelas);
-        break;
-
-      case "tingkatan":
-        query = db
-          .select({
-            tingkatan: anak.tingkatan,
-            rataRataKunjungan: sql<number>`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                tingkatan: anak.tingkatan,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .groupBy(anak.id, anak.tingkatan)
-              .as("subquery")
-          )
-          .groupBy(anak.tingkatan);
-        break;
-
-      case "global":
-      default:
-        query = db
-          .select({
-            rataRataKunjungan: sql<number>`ROUND(AVG(kunjungan_count), 2)`.as(
-              "rataRataKunjungan"
-            ),
-            totalSiswa: count(anak.id).as("totalSiswa"),
-          })
-          .from(
-            db
-              .select({
-                id: anak.id,
-                kunjungan_count: count(absensi.id).as("kunjungan_count"),
-              })
-              .from(anak)
-              .leftJoin(
-                absensi,
-                sql`${anak.id} = ${absensi.anakId} AND ${dateCondition}`
-              )
-              .groupBy(anak.id)
-              .as("subquery")
-          );
-        break;
-    }
-
-    const result = await query;
-    return NextResponse.json<RataRataResponse>(result, { status: 200 });
+    return NextResponse.json(inserted, { status: 201 });
   } catch (error) {
-    console.error("❌ Error fetching rata-rata kunjungan:", error);
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { message: "Validasi gagal", errors: error.errors },
+        { status: 400 }
+      );
+    }
+
+    console.error("Error insert absensi:", error);
     return NextResponse.json(
-      { message: "Gagal mengambil rata-rata kunjungan" },
+      { message: "Gagal menyimpan absensi" },
       { status: 500 }
     );
   }
