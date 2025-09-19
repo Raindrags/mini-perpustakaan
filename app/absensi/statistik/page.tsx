@@ -47,8 +47,8 @@ export default function StatistikPage() {
     "bulan" | "tahun" | "custom" | "all"
   >("all");
 
-  // ✅ fetchStatistics aman dari warning useEffect & bebas any
-  const fetchStatistics = useCallback(async () => {
+  // ✅ Bebas any
+  const fetchStatistics = useCallback(async (): Promise<void> => {
     try {
       const res = await fetch(
         `/api/statistik?scope=${scope}&timeRange=${timeRange}`
@@ -74,6 +74,7 @@ export default function StatistikPage() {
     }
   }, [scope, timeRange]);
 
+  // ✅ Tidak ada lagi warning deps
   useEffect(() => {
     fetchStatistics();
   }, [fetchStatistics]);
