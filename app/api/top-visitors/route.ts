@@ -3,6 +3,15 @@ import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
 import { sql, count, desc } from "drizzle-orm";
 
+// 1. Tambahkan interface ini untuk menggantikan 'any'
+interface VisitorRecord {
+  id: string | number;
+  nama: string | null;
+  kelas: string | null;
+  tingkatan: string | null;
+  jumlahKunjungan: number;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -20,7 +29,6 @@ export async function GET(req: Request) {
 
     const whereConditions = conditions.filter(Boolean) as ReturnType<typeof sql>[];
 
-    // Ambil SEMUA data pengunjung yang sudah diurutkan berdasarkan jumlah kunjungan
     const baseQuery = db
       .select({
         id: anak.id,
@@ -35,26 +43,24 @@ export async function GET(req: Request) {
       .groupBy(anak.id, anak.nama, anak.kelas, anak.tingkatan)
       .orderBy(desc(count(absensi.id)));
 
-    // Jika global (tidak ada groupBy), langsung limit 3
     if (!groupByParam || groupByParam === "global") {
       const topVisitors = await baseQuery.limit(3);
       return NextResponse.json({ data: topVisitors }, { status: 200 });
     }
 
-    // Jika berdasarkan tingkatan/kelas, kita proses pengelompokannya di sini
     const allVisitors = await baseQuery;
-    const groupedData: Record<string, any[]> = {};
+    
+    // 2. Gunakan interface VisitorRecord[] di sini (tidak pakai 'any' lagi)
+    const groupedData: Record<string, VisitorRecord[]> = {};
 
     allVisitors.forEach((visitor) => {
       const key = groupByParam === "kelas" ? visitor.kelas : visitor.tingkatan;
       const groupKey = key || "Tidak Diketahui";
 
-      // Buat array baru jika kelompok belum ada
       if (!groupedData[groupKey]) {
         groupedData[groupKey] = [];
       }
 
-      // Hanya masukkan ke array jika jumlah data di kelompok tersebut masih kurang dari 3
       if (groupedData[groupKey].length < 3) {
         groupedData[groupKey].push(visitor);
       }
