@@ -3,12 +3,12 @@ import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
 import { sql, count, desc } from "drizzle-orm";
 
-// 1. Tambahkan interface ini untuk menggantikan 'any'
+// 1. Tipe data 'tingkatan' sudah disesuaikan menjadi number | string | null
 interface VisitorRecord {
   id: string | number;
   nama: string | null;
   kelas: string | null;
-  tingkatan: string | null;
+  tingkatan: string | number | null; 
   jumlahKunjungan: number;
 }
 
@@ -50,12 +50,13 @@ export async function GET(req: Request) {
 
     const allVisitors = await baseQuery;
     
-    // 2. Gunakan interface VisitorRecord[] di sini (tidak pakai 'any' lagi)
     const groupedData: Record<string, VisitorRecord[]> = {};
 
     allVisitors.forEach((visitor) => {
       const key = groupByParam === "kelas" ? visitor.kelas : visitor.tingkatan;
-      const groupKey = key || "Tidak Diketahui";
+      
+      // 2. Pastikan groupKey selalu menjadi String agar aman dipakai sebagai key Object
+      const groupKey = key !== null && key !== undefined ? String(key) : "Tidak Diketahui";
 
       if (!groupedData[groupKey]) {
         groupedData[groupKey] = [];
