@@ -1,4 +1,3 @@
-// app/api/statistik/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
@@ -13,24 +12,24 @@ export async function GET(req: Request) {
     const endDate = searchParams.get("endDate");
     const groupBy = searchParams.get("groupBy"); // kelas | tingkatan | null
 
-    // ✅ kondisi filter tanggal
-    const conditions: (ReturnType<typeof sql> | undefined)[] = [];
+    // Kondisi filter tanggal diletakkan di ON clause (LEFT JOIN)
+    // agar anak dengan 0 kunjungan tetap dihitung sebagai totalSiswa.
+    // Tambahan ::date digunakan untuk mengatasi error pg_catalog.extract
+    const joinConditions: (ReturnType<typeof sql>)[] = [
+      sql`${anak.id} = ${absensi.anakId}`
+    ];
+
     if (tahun) {
-      conditions.push(sql`EXTRACT(YEAR FROM ${absensi.tanggal}) = ${tahun}`);
+      joinConditions.push(sql`EXTRACT(YEAR FROM ${absensi.tanggal}::date) = ${tahun}`);
     }
     if (bulan) {
-      conditions.push(sql`EXTRACT(MONTH FROM ${absensi.tanggal}) = ${bulan}`);
+      joinConditions.push(sql`EXTRACT(MONTH FROM ${absensi.tanggal}::date) = ${bulan}`);
     }
     if (startDate && endDate) {
-      conditions.push(
-        sql`${absensi.tanggal} BETWEEN ${startDate} AND ${endDate}`
+      joinConditions.push(
+        sql`${absensi.tanggal}::date BETWEEN ${startDate}::date AND ${endDate}::date`
       );
     }
-
-    // Filter out undefined conditions
-    const whereConditions = conditions.filter(Boolean) as ReturnType<
-      typeof sql
-    >[];
 
     // subquery: hitung kunjungan per anak
     const subquery = db
@@ -41,11 +40,9 @@ export async function GET(req: Request) {
         kunjungan_count: count(absensi.id).as("kunjungan_count"),
       })
       .from(anak)
-      .leftJoin(absensi, sql`${anak.id} = ${absensi.anakId}`)
-      .where(
-        whereConditions.length > 0
-          ? sql.join(whereConditions, sql` AND `)
-          : undefined
+      .leftJoin(
+        absensi,
+        sql.join(joinConditions, sql` AND `)
       )
       .groupBy(anak.id, anak.kelas, anak.tingkatan)
       .as("sub");
