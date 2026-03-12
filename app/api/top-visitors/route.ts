@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const tahun = searchParams.get("tahun");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const groupByParam = searchParams.get("groupBy"); // "kelas" | "tingkatan" | null
+    const groupByParam = searchParams.get("groupBy"); 
 
     const conditions: (ReturnType<typeof sql> | undefined)[] = [];
     

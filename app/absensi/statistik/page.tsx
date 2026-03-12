@@ -48,6 +48,12 @@ const formatNumber = (value: number | string | null | undefined): string => {
   return "0.0";
 };
 
+// Buat default tanggal untuk custom range (7 hari terakhir)
+const defaultEndDate = new Date().toISOString().split("T")[0];
+const defaultStartDateObj = new Date();
+defaultStartDateObj.setDate(defaultStartDateObj.getDate() - 7);
+const defaultStartDate = defaultStartDateObj.toISOString().split("T")[0];
+
 export default function StatistikPage() {
   const [topVisitors, setTopVisitors] = useState<Visitor[]>([]);
   const [groupedTopVisitors, setGroupedTopVisitors] = useState<Record<string, Visitor[]>>({});
@@ -58,7 +64,11 @@ export default function StatistikPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [scope, setScope] = useState<"global" | "kelas" | "tingkatan">("global");
-  const [timeRange, setTimeRange] = useState<"bulan" | "tahun" | "custom" | "all">("all");
+  const [timeRange, setTimeRange] = useState<"bulan" | "tahun" | "semester1" | "semester2" | "custom" | "all">("all");
+  
+  // State untuk tanggal kustom
+  const [customStartDate, setCustomStartDate] = useState<string>(defaultStartDate);
+  const [customEndDate, setCustomEndDate] = useState<string>(defaultEndDate);
 
   const fetchStatistics = useCallback(async (): Promise<void> => {
     try {
@@ -66,23 +76,33 @@ export default function StatistikPage() {
       setError(null);
 
       const params = new URLSearchParams();
+      const currentYear = new Date().getFullYear();
 
+      // Filter Grouping
       if (scope === "kelas") params.append("groupBy", "kelas");
       else if (scope === "tingkatan") params.append("groupBy", "tingkatan");
 
+      // Filter Waktu
       if (timeRange === "bulan") {
         const currentMonth = new Date().getMonth() + 1;
         params.append("bulan", currentMonth.toString());
-        const currentYear = new Date().getFullYear();
         params.append("tahun", currentYear.toString());
       } else if (timeRange === "tahun") {
-        const currentYear = new Date().getFullYear();
         params.append("tahun", currentYear.toString());
+      } else if (timeRange === "semester1") {
+        // Semester 1: 1 Juli - 31 Desember
+        params.append("startDate", `${currentYear - 1}-07-01`);
+        params.append("endDate", `${currentYear - 1}-12-31`);
+      } else if (timeRange === "semester2") {
+        // Semester 2: 1 Januari - 30 Juni
+        params.append("startDate", `${currentYear}-01-01`);
+        params.append("endDate", `${currentYear}-06-30`);
       } else if (timeRange === "custom") {
-        const startDate = new Date();
-        startDate.setMonth(startDate.getMonth() - 1);
-        params.append("startDate", startDate.toISOString().split("T")[0]);
-        params.append("endDate", new Date().toISOString().split("T")[0]);
+        // Rentang Kustom (Custom Range)
+        if (customStartDate && customEndDate) {
+          params.append("startDate", customStartDate);
+          params.append("endDate", customEndDate);
+        }
       }
 
       // 1. Fetch Statistik Utama
@@ -117,11 +137,9 @@ export default function StatistikPage() {
           const topData = await topRes.json();
           
           if (scope === "global") {
-            // Jika global, data ada di topData.data (Array)
             setTopVisitors(topData.data || []);
             setGroupedTopVisitors({});
           } else {
-            // Jika kelas/tingkatan, data ada di topData.groupedData (Object)
             setGroupedTopVisitors(topData.groupedData || {});
             setTopVisitors([]);
           }
@@ -136,7 +154,7 @@ export default function StatistikPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [scope, timeRange]);
+  }, [scope, timeRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchStatistics();
@@ -155,6 +173,7 @@ export default function StatistikPage() {
           <FiFilter size={18} />
           <h2 className="font-semibold">Filter Data</h2>
         </div>
+        
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tampilkan Berdasarkan</label>
@@ -166,14 +185,30 @@ export default function StatistikPage() {
           </div>
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Rentang Waktu</label>
-            <select value={timeRange} onChange={(e) => setTimeRange(e.target.value as "bulan" | "tahun" | "custom" | "all")} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white">
+            <select value={timeRange} onChange={(e) => setTimeRange(e.target.value as any)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white">
               <option value="all">Semua Waktu</option>
               <option value="bulan">Bulan Ini</option>
               <option value="tahun">Tahun Ini</option>
+              <option value="semester1">Semester 1 (Juli - Des)</option>
+              <option value="semester2">Semester 2 (Jan - Jun)</option>
               <option value="custom">Rentang Kustom</option>
             </select>
           </div>
         </div>
+
+        {/* Input Rentang Tanggal Kustom (Muncul jika timeRange === "custom") */}
+        {timeRange === "custom" && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex flex-col md:flex-row gap-4 mt-4 pt-4 border-t border-gray-100">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+              <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+              <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
+            </div>
+          </motion.div>
+        )}
       </motion.div>
 
       {error && (
@@ -326,39 +361,6 @@ export default function StatistikPage() {
           {/* ================= STATISTIK KELAS ================= */}
           {scope === "kelas" && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-8">
-              <div className="bg-white rounded-xl shadow-md mb-8 overflow-hidden">
-                <div className="flex items-center gap-3 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
-                  <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><FiGlobe size={20} /></div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-800">Statistik per Kelas</h2>
-                    <p className="text-sm text-gray-600 mt-1">Rata-rata kunjungan dan jumlah siswa per kelas</p>
-                  </div>
-                </div>
-                {classStats.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="py-4 px-6 font-semibold text-gray-700 text-sm uppercase border-b border-gray-200">Kelas</th>
-                          <th className="py-4 px-6 font-semibold text-gray-700 text-sm uppercase border-b border-gray-200">Rata-rata Kunjungan</th>
-                          <th className="py-4 px-6 font-semibold text-gray-700 text-sm uppercase border-b border-gray-200">Total Siswa</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {classStats.map((stat, index) => (
-                          <motion.tr key={stat.kelas || index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.05 }} className="hover:bg-gray-50">
-                            <td className="py-4 px-6 font-medium text-gray-900">{stat.kelas || "Tidak Diketahui"}</td>
-                            <td className="py-4 px-6 text-lg font-semibold text-gray-900">{formatNumber(stat.rataRataKunjungan)}</td>
-                            <td className="py-4 px-6 text-gray-600">{stat.totalSiswa || 0} Siswa</td>
-                          </motion.tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">Tidak ada data kelas</p>
-                )}
-              </div>
 
               {/* Tabel Top 3 PER KELAS */}
               <div className="bg-white rounded-xl p-6 shadow-md">
