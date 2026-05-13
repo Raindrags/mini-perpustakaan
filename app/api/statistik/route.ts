@@ -1,98 +1,83 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/DB";
 import { anak, absensi } from "@/DB/schema";
-import { sql, count } from "drizzle-orm";
+import { sql, eq, and, count, countDistinct } from "drizzle-orm";
 
-export async function GET(req: Request) {
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const bulan = searchParams.get("bulan");
     const tahun = searchParams.get("tahun");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const groupBy = searchParams.get("groupBy"); // kelas | tingkatan | null
+    const groupByParam = searchParams.get("groupBy");
 
-    // Kondisi filter tanggal diletakkan di ON clause (LEFT JOIN)
-    // agar anak dengan 0 kunjungan tetap dihitung sebagai totalSiswa.
-    // Tambahan ::date digunakan untuk mengatasi error pg_catalog.extract
-    const joinConditions: (ReturnType<typeof sql>)[] = [
-      sql`${anak.id} = ${absensi.anakId}`
-    ];
+    const tanggalCol = sql`CAST(${absensi.tanggal} AS DATE)`;
+    const conditions: any[] = [];
 
-    if (tahun) {
-      joinConditions.push(sql`EXTRACT(YEAR FROM ${absensi.tanggal}::date) = ${tahun}`);
+    // --- 1. Filter Waktu ---
+    if (bulan && tahun) {
+      conditions.push(sql`EXTRACT(MONTH FROM ${tanggalCol}) = ${Number(bulan)}`);
+      conditions.push(sql`EXTRACT(YEAR FROM ${tanggalCol}) = ${Number(tahun)}`);
+    } else if (tahun) {
+      conditions.push(sql`EXTRACT(YEAR FROM ${tanggalCol}) = ${Number(tahun)}`);
     }
-    if (bulan) {
-      joinConditions.push(sql`EXTRACT(MONTH FROM ${absensi.tanggal}::date) = ${bulan}`);
-    }
+
     if (startDate && endDate) {
-      joinConditions.push(
-        sql`${absensi.tanggal}::date BETWEEN ${startDate}::date AND ${endDate}::date`
-      );
+      conditions.push(sql`${tanggalCol} BETWEEN CAST(${startDate} AS DATE) AND CAST(${endDate} AS DATE)`);
     }
 
-    // subquery: hitung kunjungan per anak
-    const subquery = db
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // --- 2. Logika Grouping (Tingkatan / Kelas) ---
+    if (groupByParam === "tingkatan" || groupByParam === "kelas") {
+      const groupCol = groupByParam === "tingkatan" ? anak.tingkatan : anak.kelas;
+
+      const result = await db
+        .select({
+          [groupByParam]: groupCol,
+          // Total Siswa: Hanya menghitung siswa unik yang ada di tabel absensi (pernah datang)
+          totalSiswa: countDistinct(absensi.anakId), 
+          // Total Kunjungan: Menghitung semua baris absensi
+          totalKunjungan: count(absensi.id),
+          // Rata-rata: Total Kunjungan / Siswa yang datang
+          rataRataKunjungan: sql`ROUND(
+            COUNT(${absensi.id})::numeric / NULLIF(COUNT(DISTINCT ${absensi.anakId}), 0)::numeric, 1
+          )`,
+        })
+        .from(absensi)
+        .leftJoin(anak, eq(absensi.anakId, anak.id))
+        .where(whereClause)
+        .groupBy(groupCol);
+      
+      return NextResponse.json(result);
+    }
+
+    // --- 3. Logika Global (Default) ---
+    const globalResult = await db
       .select({
-        anakId: anak.id,
-        kelas: anak.kelas,
-        tingkatan: anak.tingkatan,
-        kunjungan_count: count(absensi.id).as("kunjungan_count"),
+        totalSiswa: countDistinct(absensi.anakId),
+        totalKunjungan: count(absensi.id),
+        rataRataKunjungan: sql`ROUND(
+          COUNT(${absensi.id})::numeric / NULLIF(COUNT(DISTINCT ${absensi.anakId}), 0)::numeric, 1
+        )`,
       })
-      .from(anak)
-      .leftJoin(
-        absensi,
-        sql.join(joinConditions, sql` AND `)
-      )
-      .groupBy(anak.id, anak.kelas, anak.tingkatan)
-      .as("sub");
+      .from(absensi)
+      .where(whereClause);
 
-    // query utama berdasarkan groupBy
-    let query;
-    if (groupBy === "kelas") {
-      query = db
-        .select({
-          kelas: subquery.kelas,
-          rataRataKunjungan:
-            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
-              "rataRataKunjungan"
-            ),
-          totalSiswa: count(subquery.anakId).as("totalSiswa"),
-        })
-        .from(subquery)
-        .groupBy(subquery.kelas);
-    } else if (groupBy === "tingkatan") {
-      query = db
-        .select({
-          tingkatan: subquery.tingkatan,
-          rataRataKunjungan:
-            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
-              "rataRataKunjungan"
-            ),
-          totalSiswa: count(subquery.anakId).as("totalSiswa"),
-        })
-        .from(subquery)
-        .groupBy(subquery.tingkatan);
-    } else {
-      // Global stats
-      query = db
-        .select({
-          rataRataKunjungan:
-            sql<number>`COALESCE(ROUND(AVG(${subquery.kunjungan_count}), 2), 0)`.as(
-              "rataRataKunjungan"
-            ),
-          totalSiswa: count(subquery.anakId).as("totalSiswa"),
-        })
-        .from(subquery);
-    }
+    const finalData = globalResult[0] || { totalSiswa: 0, totalKunjungan: 0, rataRataKunjungan: 0 };
 
-    const result = await query;
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({
+      totalSiswa: Number(finalData.totalSiswa || 0),
+      totalKunjungan: Number(finalData.totalKunjungan || 0),
+      rataRataKunjungan: finalData.rataRataKunjungan || "0.0",
+    });
+
   } catch (error) {
-    console.error("Error fetching statistik:", error);
-    return NextResponse.json(
-      { message: "Gagal mengambil data statistik" },
-      { status: 500 }
-    );
+    console.error("💥 Error Statistik API:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
